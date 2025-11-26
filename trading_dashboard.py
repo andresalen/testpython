@@ -180,30 +180,39 @@ def show_trend_analysis():
             st.write(f"**Cambio Diario:** {latest['changePercent']}%")
             st.write(f"**Volumen:** {latest['volume']:,}")
 
-# --- 5. CURRENCY STRENGTH METER ---
+# --- 5. CURRENCY STRENGTH METER (CORREGIDO) ---
 def show_currency_meter():
     st.header("💪 Currency Strength Meter (CSM)")
     st.info("Calculado basado en el cambio porcentual de las últimas 24h frente al USD.")
     
-    # Lógica: Obtenemos los pares mayores y calculamos la fuerza relativa
     # FMP Endpoint para forex
     majors = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD']
-    data = get_json(f"quotes/forex")
     
-    if data:
+    # Llamamos a la API
+    data = get_json("quotes/forex")
+    
+    # --- CORRECCIÓN DE SEGURIDAD ---
+    # 1. Verificamos si recibimos una lista válida de datos
+    if isinstance(data, list) and len(data) > 0:
         df = pd.DataFrame(data)
+        
         # Filtrar solo los majors
         df = df[df['symbol'].isin(majors)]
         
+        if df.empty:
+            st.warning("No se encontraron datos recientes de Forex.")
+            return
+
         strength_scores = {}
         
         # Calcular fuerza relativa base USD
-        # Si el par es XXXUSD y sube -> XXX es fuerte.
-        # Si el par es USDXXX y sube -> XXX es debil.
-        
         for index, row in df.iterrows():
             sym = row['symbol']
             change = row['changesPercentage']
+            
+            # Si data viene mal, change puede ser None, protegemos eso
+            if change is None:
+                change = 0.0
             
             if sym in ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD']:
                 base = sym[:3] # EUR, GBP...
@@ -212,28 +221,33 @@ def show_currency_meter():
                 quote = sym[3:] # JPY, CHF...
                 strength_scores[quote] = -change # Inverso porque USD es base
         
-        # El USD es el promedio inverso de los demás o 0 relativo (simplificado aquí como punto de pivote)
         strength_scores['USD'] = 0.0
         
         # Crear DataFrame para visualizar
         df_strength = pd.DataFrame(list(strength_scores.items()), columns=['Moneda', 'Fuerza'])
         df_strength = df_strength.sort_values(by='Fuerza', ascending=False)
         
-        # Visualización de barras
+        # Visualización
         fig = go.Figure(go.Bar(
             x=df_strength['Fuerza'],
             y=df_strength['Moneda'],
             orientation='h',
             marker=dict(
                 color=df_strength['Fuerza'],
-                colorscale='RdYlGn' # Rojo para negativo, Verde para positivo
+                colorscale='RdYlGn'
             )
         ))
         fig.update_layout(title="Fuerza Relativa de Divisas (Intradía)")
         st.plotly_chart(fig, use_container_width=True)
-        
         st.dataframe(df_strength, use_container_width=True)
 
+    # 2. Si recibimos un diccionario, es un error de la API
+    elif isinstance(data, dict) and 'Error Message' in data:
+        st.error(f"Error API Forex: {data['Error Message']}")
+    
+    # 3. Cualquier otro caso
+    else:
+        st.error("No se pudieron cargar los datos de Forex.")
 # --- NAVEGACIÓN PRINCIPAL ---
 def main():
     st.sidebar.title("🛠️ Trading Tools")
