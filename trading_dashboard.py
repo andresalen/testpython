@@ -27,7 +27,7 @@ def get_json(endpoint, params=None):
         st.error(f"Error conectando a la API: {e}")
         return []
 
-# --- 1. STOCK SCREENER ---
+# --- 1. STOCK SCREENER CORREGIDO ---
 def show_screener():
     st.header("🔍 Stock Screener")
     
@@ -51,13 +51,23 @@ def show_screener():
             
         data = get_json("stock-screener", params)
         
-        if data:
+        # --- CORRECCIÓN AQUÍ ---
+        # Verificamos si 'data' es una lista (respuesta correcta)
+        if isinstance(data, list) and len(data) > 0:
             df = pd.DataFrame(data)
-            # Seleccionar columnas relevantes
-            cols = ['symbol', 'companyName', 'price', 'beta', 'marketCap', 'sector', 'industry']
-            st.dataframe(df[cols].style.format({'price': '${:.2f}', 'beta': '{:.2f}'}), use_container_width=True)
+            # Seleccionar columnas relevantes si existen
+            cols_to_show = ['symbol', 'companyName', 'price', 'beta', 'marketCap', 'sector', 'industry']
+            # Filtramos solo las columnas que realmente vinieron en la respuesta
+            available_cols = [c for c in cols_to_show if c in df.columns]
+            
+            st.dataframe(df[available_cols], use_container_width=True)
+        
+        # Si es un diccionario, probablemente es un error de la API
+        elif isinstance(data, dict) and 'Error Message' in data:
+            st.error(f"Error de la API: {data['Error Message']}")
+        
         else:
-            st.warning("No se encontraron resultados con esos filtros.")
+            st.warning("No se encontraron resultados o hubo un error inesperado con los datos.")
 
 # --- 2. ECONOMIC CALENDAR ---
 def show_calendar():
