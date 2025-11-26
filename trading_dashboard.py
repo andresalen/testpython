@@ -20,7 +20,7 @@ def get_json(endpoint, params=None):
         params = {}
     params['apikey'] = API_KEY
     
-    # Construcción de URL más robusta
+    # Lógica para usar URLs completas (stable) o relativas (v3)
     if endpoint.startswith("http"):
         url = endpoint
     else:
@@ -30,7 +30,7 @@ def get_json(endpoint, params=None):
         response = requests.get(url, params=params)
         return response.json()
     except Exception as e:
-        st.error(f"Error conectando a la API: {e}")
+        st.error(f"Error de conexión: {e}")
         return []
 # --- 1. STOCK SCREENER (CORREGIDO CON NUEVO ENDPOINT) ---
 def show_screener():
@@ -90,51 +90,103 @@ def show_screener():
         else:
             st.warning("No se encontraron resultados con esos filtros.")
 
-# --- 2. ECONOMIC CALENDAR (CORREGIDO) ---
+# --- 2. SUPER CALENDAR (MACRO + EARNINGS + DIVIDENDS) ---
 def show_calendar():
-    st.header("📅 Economic Calendar")
+    st.header("📅 Calendario de Mercado")
     
+    # Pestañas para organizar la información
+    tab1, tab2, tab3 = st.tabs(["🌎 Macroeconómico", "💰 Resultados (Earnings)", "💸 Dividendos"])
+    
+    # Controles de fecha comunes
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Desde", datetime.now())
     with col2:
         end_date = st.date_input("Hasta", datetime.now() + timedelta(days=7))
-        
-    if st.button("Cargar Calendario"):
-        # Convertir fechas a string YYYY-MM-DD
-        params = {
-            'from': start_date.strftime("%Y-%m-%d"), 
-            'to': end_date.strftime("%Y-%m-%d")
-        }
-        
-        data = get_json("economic_calendar", params)
-        
-        # --- CORRECCIÓN DE SEGURIDAD ---
-        if isinstance(data, list) and len(data) > 0:
-            df = pd.DataFrame(data)
-            
-            # Limpieza y orden
-            if 'date' in df.columns:
-                df['date'] = pd.to_datetime(df['date'])
-                df = df.sort_values(by='date')
-                
-                # Seleccionar columnas que existan
-                cols = ['date', 'country', 'event', 'actual', 'estimate', 'impact']
-                available_cols = [c for c in cols if c in df.columns]
-                
-                st.dataframe(
-                    df[available_cols],
-                    use_container_width=True
-                )
-            else:
-                st.warning("Los datos recibidos no tienen el formato de fecha esperado.")
-                
-        elif isinstance(data, dict) and 'Error Message' in data:
-            st.error(f"Error API Calendario: {data['Error Message']}")
-            
-        else:
-            st.info("No hay eventos económicos para este rango o hubo un error de conexión.")
+    
+    # Formato de fechas para la API
+    params = {
+        'from': start_date.strftime("%Y-%m-%d"), 
+        'to': end_date.strftime("%Y-%m-%d")
+    }
 
+    # --- PESTAÑA 1: MACROECONOMÍA ---
+    with tab1:
+        if st.button("Cargar Datos Macro"):
+            # Endpoint: https://financialmodelingprep.com/stable/economic-calendar
+            url = "https://financialmodelingprep.com/stable/economic-calendar"
+            data = get_json(url, params)
+            
+            if isinstance(data, list) and len(data) > 0:
+                df = pd.DataFrame(data)
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df.sort_values(by='date')
+                    # Columnas estándar de FMP Economic Calendar
+                    cols = ['date', 'country', 'event', 'actual', 'estimate', 'impact']
+                    available = [c for c in cols if c in df.columns]
+                    st.dataframe(df[available], use_container_width=True)
+                else:
+                    st.write(df) # Fallback si cambian las columnas
+            elif isinstance(data, dict) and 'Error Message' in data:
+                st.error(f"Error: {data['Error Message']}")
+            else:
+                st.info("No hay eventos macroeconómicos para estas fechas.")
+
+    # --- PESTAÑA 2: EARNINGS (RESULTADOS) ---
+    with tab2:
+        if st.button("Cargar Earnings"):
+            # Endpoint: https://financialmodelingprep.com/stable/earnings-calendar
+            url = "https://financialmodelingprep.com/stable/earnings-calendar"
+            data = get_json(url, params)
+            
+            if isinstance(data, list) and len(data) > 0:
+                df = pd.DataFrame(data)
+                # Según tu documentación: symbol, date, epsActual, epsEstimated, revenueActual...
+                cols_to_show = ['symbol', 'date', 'epsEstimated', 'epsActual', 'revenueEstimated', 'revenueActual']
+                available = [c for c in cols_to_show if c in df.columns]
+                
+                if not df.empty:
+                    # Formateo visual
+                    st.dataframe(
+                        df[available].style.format({
+                            'epsEstimated': '{:.2f}',
+                            'epsActual': '{:.2f}',
+                            'revenueEstimated': '${:,.0f}',
+                            'revenueActual': '${:,.0f}'
+                        }),
+                        use_container_width=True
+                    )
+            elif isinstance(data, dict) and 'Error Message' in data:
+                st.error(f"Error: {data['Error Message']}")
+            else:
+                st.info("No hay reportes de resultados programados.")
+
+    # --- PESTAÑA 3: DIVIDENDOS ---
+    with tab3:
+        if st.button("Cargar Dividendos"):
+            # Endpoint: https://financialmodelingprep.com/stable/dividends-calendar
+            url = "https://financialmodelingprep.com/stable/dividends-calendar"
+            data = get_json(url, params)
+            
+            if isinstance(data, list) and len(data) > 0:
+                df = pd.DataFrame(data)
+                # Según tu documentación: symbol, date, adjDividend, yield, paymentDate
+                cols_to_show = ['symbol', 'date', 'adjDividend', 'yield', 'paymentDate']
+                available = [c for c in cols_to_show if c in df.columns]
+                
+                if not df.empty:
+                    st.dataframe(
+                        df[available].style.format({
+                            'adjDividend': '${:.3f}',
+                            'yield': '{:.2f}%'
+                        }),
+                        use_container_width=True
+                    )
+            elif isinstance(data, dict) and 'Error Message' in data:
+                st.error(f"Error: {data['Error Message']}")
+            else:
+                st.info("No hay dividendos programados.")
 # --- 3. INFORMACIÓN DE SÍMBOLOS ---
 def show_symbol_info():
     st.header("ℹ️ Información de Símbolo")
