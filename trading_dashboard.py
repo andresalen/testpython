@@ -14,19 +14,24 @@ except:
 BASE_URL = "https://financialmodelingprep.com/api/v3"
 
 # --- FUNCIONES DE CARGA DE DATOS ---
-@st.cache_data(ttl=300) # Cache de 5 minutos para no saturar la API
+@st.cache_data(ttl=300)
 def get_json(endpoint, params=None):
     if params is None:
         params = {}
     params['apikey'] = API_KEY
-    url = f"{BASE_URL}/{endpoint}"
+    
+    # Construcción de URL más robusta
+    if endpoint.startswith("http"):
+        url = endpoint
+    else:
+        url = f"{BASE_URL}/{endpoint}"
+        
     try:
         response = requests.get(url, params=params)
         return response.json()
     except Exception as e:
         st.error(f"Error conectando a la API: {e}")
         return []
-
 # --- 1. STOCK SCREENER (CORREGIDO CON NUEVO ENDPOINT) ---
 def show_screener():
     st.header("🔍 Stock Screener")
