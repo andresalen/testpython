@@ -90,7 +90,7 @@ def show_screener():
         else:
             st.warning("No se encontraron resultados con esos filtros.")
 
-# --- 2. ECONOMIC CALENDAR ---
+# --- 2. ECONOMIC CALENDAR (CORREGIDO) ---
 def show_calendar():
     st.header("📅 Economic Calendar")
     
@@ -101,23 +101,39 @@ def show_calendar():
         end_date = st.date_input("Hasta", datetime.now() + timedelta(days=7))
         
     if st.button("Cargar Calendario"):
-        params = {'from': start_date, 'to': end_date}
+        # Convertir fechas a string YYYY-MM-DD
+        params = {
+            'from': start_date.strftime("%Y-%m-%d"), 
+            'to': end_date.strftime("%Y-%m-%d")
+        }
+        
         data = get_json("economic_calendar", params)
         
-        if data:
+        # --- CORRECCIÓN DE SEGURIDAD ---
+        if isinstance(data, list) and len(data) > 0:
             df = pd.DataFrame(data)
+            
             # Limpieza y orden
-            if not df.empty:
+            if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date'])
                 df = df.sort_values(by='date')
                 
-                # Mapeo de impacto para colores (si existiera) o formato simple
+                # Seleccionar columnas que existan
+                cols = ['date', 'country', 'event', 'actual', 'estimate', 'impact']
+                available_cols = [c for c in cols if c in df.columns]
+                
                 st.dataframe(
-                    df[['date', 'country', 'event', 'actual', 'estimate', 'impact']],
+                    df[available_cols],
                     use_container_width=True
                 )
             else:
-                st.info("No hay eventos económicos para este rango.")
+                st.warning("Los datos recibidos no tienen el formato de fecha esperado.")
+                
+        elif isinstance(data, dict) and 'Error Message' in data:
+            st.error(f"Error API Calendario: {data['Error Message']}")
+            
+        else:
+            st.info("No hay eventos económicos para este rango o hubo un error de conexión.")
 
 # --- 3. INFORMACIÓN DE SÍMBOLOS ---
 def show_symbol_info():
