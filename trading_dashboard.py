@@ -27,7 +27,7 @@ def get_json(endpoint, params=None):
         st.error(f"Error conectando a la API: {e}")
         return []
 
-# --- 1. STOCK SCREENER CORREGIDO ---
+# --- 1. STOCK SCREENER (CORREGIDO CON NUEVO ENDPOINT) ---
 def show_screener():
     st.header("🔍 Stock Screener")
     
@@ -35,39 +35,55 @@ def show_screener():
     with col1:
         limit = st.number_input("Cantidad de resultados", min_value=10, max_value=1000, value=50)
     with col2:
-        min_market_cap = st.number_input("Min Market Cap (Millions)", value=1000) * 1000000
+        # El input es en Millones, lo multiplicamos para la API
+        min_cap_input = st.number_input("Min Market Cap (Millions)", value=1000)
+        min_market_cap = min_cap_input * 1000000
     with col3:
         sector = st.selectbox("Sector", ["Technology", "Healthcare", "Financial Services", "Energy", "Consumer Cyclical", "All"], index=5)
 
     if st.button("Ejecutar Screener"):
-        # FMP Stock Screener Endpoint
+        # Usamos los parámetros exactos de la documentación que enviaste
         params = {
             'marketCapMoreThan': min_market_cap,
             'limit': limit,
-            'isEtf': 'false'
+            'isEtf': 'false',
+            'isActivelyTrading': 'true'
         }
         if sector != "All":
             params['sector'] = sector
             
-        data = get_json("stock-screener", params)
+        # CAMBIO CLAVE: Usamos "company-screener" en lugar de "stock-screener"
+        # Nota: La base URL es api/v3, al concatenar queda api/v3/company-screener
+        # Si falla, intentaremos forzar la url 'stable'
         
-        # --- CORRECCIÓN AQUÍ ---
-        # Verificamos si 'data' es una lista (respuesta correcta)
+        # Intentamos primero con la estructura estándar
+        data = get_json("company-screener", params)
+
+        # Verificación de datos
         if isinstance(data, list) and len(data) > 0:
             df = pd.DataFrame(data)
-            # Seleccionar columnas relevantes si existen
-            cols_to_show = ['symbol', 'companyName', 'price', 'beta', 'marketCap', 'sector', 'industry']
-            # Filtramos solo las columnas que realmente vinieron en la respuesta
+            
+            # Definimos las columnas basados en el JSON que me mostraste
+            cols_to_show = ['symbol', 'companyName', 'price', 'beta', 'marketCap', 'sector', 'industry', 'lastAnnualDividend', 'volume']
+            
+            # Filtramos solo las que existan para evitar errores
             available_cols = [c for c in cols_to_show if c in df.columns]
             
-            st.dataframe(df[available_cols], use_container_width=True)
+            # Formateo visual
+            st.dataframe(
+                df[available_cols].style.format({
+                    'price': '${:.2f}', 
+                    'beta': '{:.2f}', 
+                    'marketCap': '${:,.0f}',
+                    'volume': '{:,.0f}'
+                }),
+                use_container_width=True
+            )
         
-        # Si es un diccionario, probablemente es un error de la API
         elif isinstance(data, dict) and 'Error Message' in data:
-            st.error(f"Error de la API: {data['Error Message']}")
-        
+            st.error(f"Error FMP: {data['Error Message']}")
         else:
-            st.warning("No se encontraron resultados o hubo un error inesperado con los datos.")
+            st.warning("No se encontraron resultados con esos filtros.")
 
 # --- 2. ECONOMIC CALENDAR ---
 def show_calendar():
